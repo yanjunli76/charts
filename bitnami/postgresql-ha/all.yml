@@ -1,0 +1,388 @@
+---
+# Source: postgresql-ha/templates/pgpool/secrets.yaml
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-new-postgresql-ha-pgpool
+  labels:
+    app.kubernetes.io/name: postgresql-ha
+    helm.sh/chart: postgresql-ha-1.4.3
+    app.kubernetes.io/instance: postgres-new
+    app.kubernetes.io/managed-by: Tiller
+    app.kubernetes.io/component: pgpool
+type: Opaque
+data:
+  admin-password: "N2lYV2tGbHN4Uw=="
+---
+# Source: postgresql-ha/templates/postgresql/secrets.yaml
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-new-postgresql-ha-postgresql
+  labels:
+    app.kubernetes.io/name: postgresql-ha
+    helm.sh/chart: postgresql-ha-1.4.3
+    app.kubernetes.io/instance: postgres-new
+    app.kubernetes.io/managed-by: Tiller
+    app.kubernetes.io/component: postgresql
+type: Opaque
+data:
+  postgresql-password: "dWRYME1lN2JFTA=="
+  repmgr-password: "RUdSVTJ4dkUwYg=="
+---
+# Source: postgresql-ha/templates/pgpool/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-new-postgresql-ha-pgpool
+  labels:
+    app.kubernetes.io/name: postgresql-ha
+    helm.sh/chart: postgresql-ha-1.4.3
+    app.kubernetes.io/instance: postgres-new
+    app.kubernetes.io/managed-by: Tiller
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+      protocol: TCP
+      nodePort: null
+  selector:
+    app.kubernetes.io/name: postgresql-ha
+    app.kubernetes.io/instance: postgres-new
+    app.kubernetes.io/component: pgpool
+
+---
+# Source: postgresql-ha/templates/postgresql/service-headless.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-new-postgresql-ha-postgresql-headless
+  labels:
+    app.kubernetes.io/name: postgresql-ha
+    helm.sh/chart: postgresql-ha-1.4.3
+    app.kubernetes.io/instance: postgres-new
+    app.kubernetes.io/managed-by: Tiller
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: postgresql-ha
+    app.kubernetes.io/instance: postgres-new
+    app.kubernetes.io/component: postgresql
+
+---
+# Source: postgresql-ha/templates/postgresql/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-new-postgresql-ha-postgresql
+  labels:
+    app.kubernetes.io/name: postgresql-ha
+    helm.sh/chart: postgresql-ha-1.4.3
+    app.kubernetes.io/instance: postgres-new
+    app.kubernetes.io/managed-by: Tiller
+    app.kubernetes.io/component: postgresql
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: postgresql-ha
+    app.kubernetes.io/instance: postgres-new
+    app.kubernetes.io/component: postgresql
+
+---
+# Source: postgresql-ha/templates/pgpool/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-new-postgresql-ha-pgpool
+  labels: 
+    app.kubernetes.io/name: postgresql-ha
+    helm.sh/chart: postgresql-ha-1.4.3
+    app.kubernetes.io/instance: postgres-new
+    app.kubernetes.io/managed-by: Tiller
+    app.kubernetes.io/component: pgpool
+spec:
+  replicas: 2
+  selector:
+    matchLabels: 
+      app.kubernetes.io/name: postgresql-ha
+      app.kubernetes.io/instance: postgres-new
+      app.kubernetes.io/component: pgpool
+  template:
+    metadata:
+      labels: 
+        app.kubernetes.io/name: postgresql-ha
+        helm.sh/chart: postgresql-ha-1.4.3
+        app.kubernetes.io/instance: postgres-new
+        app.kubernetes.io/managed-by: Tiller
+        app.kubernetes.io/component: pgpool
+    spec:      
+      securityContext:
+        fsGroup: 0
+      # Auxiliar vars to populate environment variables
+      containers:
+        - name: pgpool
+          image: docker.io/bitnami/pgpool:4.1.0-debian-10-r7
+          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            runAsUser: 0
+          env:
+            - name: BITNAMI_DEBUG
+              value: "true"
+            - name: PGPOOL_BACKEND_NODES
+              value: 0:postgres-new-postgresql-ha-postgresql-0.postgres-new-postgresql-ha-postgresql-headless.default.svc.cluster.local:5432,1:postgres-new-postgresql-ha-postgresql-1.postgres-new-postgresql-ha-postgresql-headless.default.svc.cluster.local:5432,2:postgres-new-postgresql-ha-postgresql-2.postgres-new-postgresql-ha-postgresql-headless.default.svc.cluster.local:5432,
+            - name: PGPOOL_SR_CHECK_USER
+              value: "repmgr"
+            - name: PGPOOL_SR_CHECK_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-new-postgresql-ha-postgresql
+                  key: repmgr-password
+            - name: PGPOOL_ENABLE_LOAD_BALANCING
+              value: "yes"
+            - name: PGPOOL_ENABLE_LDAP
+              value: "no"
+            - name: PGPOOL_POSTGRES_USERNAME
+              value: "postgres"
+            - name: PGPOOL_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-new-postgresql-ha-postgresql
+                  key: postgresql-password
+            - name: PGPOOL_ADMIN_USERNAME
+              value: "admin"
+            - name: PGPOOL_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-new-postgresql-ha-pgpool
+                  key: admin-password
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          livenessProbe:
+            exec:
+              command:
+                - /healthcheck.sh
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -ec
+                - PGPASSWORD=${PGPOOL_POSTGRES_PASSWORD} psql -U "postgres" -d "postgres" -h 127.0.0.1 -tA -c "SELECT 1" >/dev/null
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 5
+          resources:
+            limits: {}
+            requests: {}
+            
+          volumeMounts:
+      volumes:
+
+---
+# Source: postgresql-ha/templates/postgresql/statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-new-postgresql-ha-postgresql
+  labels:
+    app.kubernetes.io/name: postgresql-ha
+    helm.sh/chart: postgresql-ha-1.4.3
+    app.kubernetes.io/instance: postgres-new
+    app.kubernetes.io/managed-by: Tiller
+    app.kubernetes.io/component: postgresql
+spec:
+  serviceName: postgres-new-postgresql-ha-postgresql-headless
+  replicas: 3
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgresql-ha
+      app.kubernetes.io/instance: postgres-new
+      app.kubernetes.io/component: postgresql
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgresql-ha
+        helm.sh/chart: postgresql-ha-1.4.3
+        app.kubernetes.io/instance: postgres-new
+        app.kubernetes.io/managed-by: Tiller
+        app.kubernetes.io/component: postgresql
+    spec:      
+      securityContext:
+        fsGroup: 1001
+      containers:
+        - name: postgresql
+          image: docker.io/bitnami/postgresql-repmgr:11.6.0-debian-10-r0
+          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            runAsUser: 1001
+          # Auxiliar vars to populate environment variables
+          env:
+            - name: BITNAMI_DEBUG
+              value: "true"
+            # PostgreSQL configuration
+            - name: POSTGRESQL_VOLUME_DIR
+              value: "/bitnami/postgresql"
+            - name: PGDATA
+              value: "/bitnami/postgresql/data"
+            - name: POSTGRES_USER
+              value: "postgres"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-new-postgresql-ha-postgresql
+                  key: postgresql-password
+            - name: POSTGRES_DB
+              value: "postgres"
+            # Repmgr configuration
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: REPMGR_UPGRADE_EXTENSION
+              value: "no"
+            - name: REPMGR_PGHBA_TRUST_ALL
+              value: "no"
+            - name: REPMGR_MOUNTED_CONF_DIR
+              value: "/bitnami/repmgr/conf"
+            - name: REPMGR_PARTNER_NODES
+              value: postgres-new-postgresql-ha-postgresql-0.postgres-new-postgresql-ha-postgresql-headless.default.svc.cluster.local,postgres-new-postgresql-ha-postgresql-1.postgres-new-postgresql-ha-postgresql-headless.default.svc.cluster.local,postgres-new-postgresql-ha-postgresql-2.postgres-new-postgresql-ha-postgresql-headless.default.svc.cluster.local,
+            - name: REPMGR_PRIMARY_HOST
+              value: "postgres-new-postgresql-ha-postgresql-0.postgres-new-postgresql-ha-postgresql-headless.default.svc.cluster.local"
+            - name: REPMGR_NODE_NAME
+              value: "$(MY_POD_NAME)"
+            - name: REPMGR_NODE_NETWORK_NAME
+              value: "$(MY_POD_NAME).postgres-new-postgresql-ha-postgresql-headless.default.svc.cluster.local"
+            - name: REPMGR_LOG_LEVEL
+              value: "NOTICE"
+            - name: REPMGR_CONNECT_TIMEOUT
+              value: "5"
+            - name: REPMGR_RECONNECT_ATTEMPTS
+              value: "3"
+            - name: REPMGR_RECONNECT_INTERVAL
+              value: "5"
+            - name: REPMGR_USERNAME
+              value: "repmgr"
+            - name: REPMGR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-new-postgresql-ha-postgresql
+                  key: repmgr-password
+            - name: REPMGR_DATABASE
+              value: "repmgr"
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - 'PGPASSWORD=$POSTGRES_PASSWORD psql -w -U "postgres" -d "postgres"  -h 127.0.0.1 -c "SELECT 1"'
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - 'PGPASSWORD=$POSTGRES_PASSWORD psql -w -U "postgres" -d "postgres"  -h 127.0.0.1 -c "SELECT 1"'
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 6
+          resources:
+            limits: {}
+            requests: {}
+            
+          volumeMounts:
+            - name: data
+              mountPath: /bitnami/postgresql
+      volumes:
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: "100Gi"
+        storageClassName: my-local-storage
+
+---
+# Source: postgresql-ha/templates/ldap-secrets.yaml
+
+---
+# Source: postgresql-ha/templates/networkpolicy.yaml
+
+
+---
+# Source: postgresql-ha/templates/pgpool/configmap.yaml
+
+
+---
+# Source: postgresql-ha/templates/pgpool/ingress.yaml
+
+
+---
+# Source: postgresql-ha/templates/pgpool/initdb-scripts-configmap.yaml
+
+
+---
+# Source: postgresql-ha/templates/pgpool/pdb.yaml
+
+
+---
+# Source: postgresql-ha/templates/postgresql/configmap.yaml
+
+
+---
+# Source: postgresql-ha/templates/postgresql/extended-configmap.yaml
+
+
+---
+# Source: postgresql-ha/templates/postgresql/initdb-scripts-configmap.yaml
+
+
+---
+# Source: postgresql-ha/templates/postgresql/metrics-service.yaml
+
+
+---
+# Source: postgresql-ha/templates/postgresql/pdb.yaml
+
+
+---
+# Source: postgresql-ha/templates/postgresql/servicemonitor.yaml
+
+
