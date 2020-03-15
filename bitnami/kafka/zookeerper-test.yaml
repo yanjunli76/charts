@@ -24,11 +24,22 @@ metadata:
 spec:
   containers:
   - name: kafka-client
-    image: gcr.io/google-containers/kubernetes-kafka:1.0-10.2.1
+    # image: gcr.io/google-containers/kubernetes-kafka:1.0-10.2.0
+    image: docker.io/wurstmeister/kafka:latest
     command:
       - sleep
       - "3600"
     imagePullPolicy: IfNotPresent
+    volumeMounts:
+    - name: kafka-certificates
+      mountPath: /opt/bitnami/kafka/conf/certs/
+      readOnly: true
+   
+  volumes:
+    - name: kafka-certificates
+      secret:
+        secretName: kafka-secret
+        defaultMode: 25
   restartPolicy: Always 
 
 

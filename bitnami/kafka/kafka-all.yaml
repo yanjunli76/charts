@@ -7,7 +7,7 @@ metadata:
   name: new-kafka
   labels:
     app.kubernetes.io/name: kafka
-    helm.sh/chart: kafka-7.2.9
+    helm.sh/chart: kafka-7.3.5
     app.kubernetes.io/instance: new
     app.kubernetes.io/managed-by: Tiller
     app.kubernetes.io/component: kafka
@@ -21,6 +21,26 @@ spec:
   
 
 ---
+# Source: kafka/templates/secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: new-kafka
+  labels:
+    app.kubernetes.io/name: kafka
+    helm.sh/chart: kafka-7.3.5
+    app.kubernetes.io/instance: new
+    app.kubernetes.io/managed-by: Tiller
+type: Opaque
+data:
+  kafka-broker-password: "dXNlcg=="
+  
+  kafka-inter-broker-password: "YWRtaW4="
+  
+  kafka-zookeeper-password: "OSs3emladUNlcXkzdldNZm0yVTloUT09"
+  
+
+---
 # Source: kafka/templates/svc-headless.yaml
 apiVersion: v1
 kind: Service
@@ -28,7 +48,7 @@ metadata:
   name: new-kafka-headless
   labels:
     app.kubernetes.io/name: kafka
-    helm.sh/chart: kafka-7.2.9
+    helm.sh/chart: kafka-7.3.5
     app.kubernetes.io/instance: new
     app.kubernetes.io/managed-by: Tiller
     app.kubernetes.io/component: kafka
@@ -39,6 +59,9 @@ spec:
     - name: kafka
       port: 9092
       targetPort: kafka
+    - name: kafka-ssl
+      port: 9093
+      targetPort: kafka-ssl
   selector:
     app.kubernetes.io/name: kafka
     app.kubernetes.io/instance: new
@@ -52,7 +75,7 @@ metadata:
   name: new-kafka
   labels:
     app.kubernetes.io/name: kafka
-    helm.sh/chart: kafka-7.2.9
+    helm.sh/chart: kafka-7.3.5
     app.kubernetes.io/instance: new
     app.kubernetes.io/managed-by: Tiller
     app.kubernetes.io/component: kafka
@@ -65,6 +88,9 @@ spec:
     - name: kafka
       port: 9092
       targetPort: kafka
+    - name: kafka-ssl
+      port: 9093
+      targetPort: kafka-ssl
   selector:
     app.kubernetes.io/name: kafka
     app.kubernetes.io/instance: new
@@ -78,7 +104,7 @@ metadata:
   name: new-kafka
   labels:
     app.kubernetes.io/name: kafka
-    helm.sh/chart: kafka-7.2.9
+    helm.sh/chart: kafka-7.3.5
     app.kubernetes.io/instance: new
     app.kubernetes.io/managed-by: Tiller
     app.kubernetes.io/component: kafka
@@ -98,7 +124,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: kafka
-        helm.sh/chart: kafka-7.2.9
+        helm.sh/chart: kafka-7.3.5
         app.kubernetes.io/instance: new
         app.kubernetes.io/managed-by: Tiller
         app.kubernetes.io/component: kafka
@@ -135,9 +161,34 @@ spec:
             - name: KAFKA_PORT_NUMBER
               value: "9092"
             - name: KAFKA_CFG_LISTENERS
-              value: "PLAINTEXT://:$(KAFKA_PORT_NUMBER)"
+              value: "SASL_SSL://:$(KAFKA_PORT_NUMBER),SSL://:9093"
             - name: KAFKA_CFG_ADVERTISED_LISTENERS
-              value: 'PLAINTEXT://$(MY_POD_NAME).new-kafka-headless.default.svc.cluster.local:$(KAFKA_PORT_NUMBER)'
+              value: 'SASL_SSL://$(MY_POD_NAME).new-kafka-headless.default.svc.cluster.local:$(KAFKA_PORT_NUMBER),SSL://$(MY_POD_NAME).new-kafka-headless.default.svc.cluster.local:9093'
+            - name: KAFKA_OPTS
+              value: "-Djava.security.auth.login.config=/opt/bitnami/kafka/conf/kafka_jaas.conf"
+            - name: KAFKA_BROKER_USER
+              value: "user"
+            - name: KAFKA_BROKER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: new-kafka
+                  key: kafka-broker-password
+            - name: KAFKA_INTER_BROKER_USER
+              value: "admin"
+            - name: KAFKA_INTER_BROKER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: new-kafka
+                  key: kafka-inter-broker-password
+            - name: KAFKA_ZOOKEEPER_USER
+              value: "kafka"
+            - name: KAFKA_ZOOKEEPER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: new-kafka
+                  key: kafka-zookeeper-password
+            - name: KAFKA_CERTIFICATE_PASSWORD
+              value: "Admin!23Admin"
             - name: ALLOW_PLAINTEXT_LISTENER
               value: "yes"
             - name: KAFKA_CFG_BROKER_ID
@@ -169,7 +220,7 @@ spec:
             - name: KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
               value: "3"
             - name: KAFKA_CFG_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM
-              value: "https"
+              value: 
             - name: KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR
               value: "3"
             - name: KAFKA_CFG_NUM_IO_THREADS
@@ -191,6 +242,8 @@ spec:
           ports:
             - name: kafka
               containerPort: 9092
+            - name: kafka-ssl
+              containerPort: 9093
           livenessProbe:
             tcpSocket:
               port: kafka
@@ -210,10 +263,18 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /bitnami/kafka
+            - name: kafka-certificates
+              mountPath: /opt/bitnami/kafka/conf/certs/
+              readOnly: true
         
       volumes:
         
         
+        
+        - name: kafka-certificates
+          secret:
+            secretName: kafka-secret
+            defaultMode: 256
         
   volumeClaimTemplates:
     - metadata:
@@ -247,10 +308,6 @@ spec:
 
 ---
 # Source: kafka/templates/scripts-configmap.yaml
-
----
-# Source: kafka/templates/secrets.yaml
-
 
 ---
 # Source: kafka/templates/serviceaccount.yaml
