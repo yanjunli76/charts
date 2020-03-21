@@ -104,7 +104,7 @@ config: |-
 ## https://github.com/bitnami/bitnami-docker-kafka#configuration
 ##
 ## Allow to use the PLAINTEXT listener.
-allowPlaintextListener: true
+allowPlaintextListener: false
 
 ## The address the socket server listens on.
 # listeners:
@@ -266,11 +266,12 @@ service:
   annotations: {}
 
 externalAccess:
-  enabled: false
+  enabled: true
   service:
     ## Type of service for external access. It can be LoadBalancer or NodePort.
     ##
-    type: LoadBalancer
+    # type: LoadBalancer
+    type: NodePort 
     ## Port used when service type is LoadBalancer
     ##
     port: 19092
@@ -282,7 +283,7 @@ externalAccess:
     # domain: mydomain.com
     ## Array of node ports used for each Kafka broker. Length must be the same as replicas
     ##
-    nodePort: []
+    nodePort: [30000,30001,30002]
 
     ## Service annotations done as key:value pairs
     annotations: {}
