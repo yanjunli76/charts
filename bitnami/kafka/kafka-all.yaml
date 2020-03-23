@@ -7,74 +7,107 @@ metadata:
   name: new-kafka
   labels:
     app.kubernetes.io/name: kafka
-    helm.sh/chart: kafka-7.3.5
+    helm.sh/chart: kafka-9.0.0
     app.kubernetes.io/instance: new
     app.kubernetes.io/managed-by: Tiller
     app.kubernetes.io/component: kafka
 spec:
+  maxUnavailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: kafka
       app.kubernetes.io/instance: new
       app.kubernetes.io/component: kafka
-  maxUnavailable: 1
-  
-
----
-# Source: kafka/templates/secrets.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: new-kafka
-  labels:
-    app.kubernetes.io/name: kafka
-    helm.sh/chart: kafka-7.3.5
-    app.kubernetes.io/instance: new
-    app.kubernetes.io/managed-by: Tiller
-type: Opaque
-data:
-  kafka-broker-password: "dXNlcg=="
-  
-  kafka-inter-broker-password: "YWRtaW4="
-  
-  kafka-zookeeper-password: "OSs3emladUNlcXkzdldNZm0yVTloUT09"
-  
 
 ---
 # Source: kafka/templates/scripts-configmap.yaml
-
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: new-kafka-scripts
   labels:
     app.kubernetes.io/name: kafka
-    helm.sh/chart: kafka-7.3.5
+    helm.sh/chart: kafka-9.0.0
     app.kubernetes.io/instance: new
     app.kubernetes.io/managed-by: Tiller
 data:
   setup.sh: |-
     #!/bin/bash
 
-    HOSTNAME=$(hostname -s)
-    ID=${HOSTNAME:(-1)}
-    LAN_IP=${NODE_IP:?node ip is missing}
-
+    ID="${MY_POD_NAME#"new-kafka-"}"
+    export KAFKA_CFG_BROKER_ID="$ID"
     # Configure external ip and port
     # export EXTERNAL_ACCESS_IP=$(curl -s https://ipinfo.io/ip)
+    LAN_IP=${NODE_IP:?node ip is missing}
     export EXTERNAL_ACCESS_IP=${LAN_IP}
     export EXTERNAL_ACCESS_PORT=$(echo '[30000 30001 30002]' | tr -d '[]' | cut -d ' ' -f "$(($ID + 1))")
 
     # Configure Kafka internal and external listeners
-    export KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:SASL_SSL,EXTERNAL:SASL_SSL
     export KAFKA_CFG_LISTENERS=INTERNAL://:9092,EXTERNAL://:${EXTERNAL_ACCESS_PORT}
-    export KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL
     export KAFKA_CFG_ADVERTISED_LISTENERS="INTERNAL://${MY_POD_NAME}.new-kafka-headless.default.svc.cluster.local:9092,EXTERNAL://${EXTERNAL_ACCESS_IP}:${EXTERNAL_ACCESS_PORT}"
 
     exec /entrypoint.sh /run.sh
+
+---
+# Source: kafka/templates/serviceaccount.yaml
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kafka-sa
+  labels:
+    app.kubernetes.io/name: kafka
+    helm.sh/chart: kafka-9.0.0
+    app.kubernetes.io/instance: new
+    app.kubernetes.io/managed-by: Tiller
+    app.kubernetes.io/component: kafka
+
+---
+# Source: kafka/templates/role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: new-kafka
+  labels:
+    app.kubernetes.io/name: kafka
+    helm.sh/chart: kafka-9.0.0
+    app.kubernetes.io/instance: new
+    app.kubernetes.io/managed-by: Tiller
+    app.kubernetes.io/component: kafka
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+---
+# Source: kafka/templates/rolebinding.yaml
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: new-kafka
+  labels:
+    app.kubernetes.io/name: kafka
+    helm.sh/chart: kafka-9.0.0
+    app.kubernetes.io/instance: new
+    app.kubernetes.io/managed-by: Tiller
+    app.kubernetes.io/component: kafka
+roleRef:
+  kind: Role
+  name: new-kafka
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: kafka-sa
+    namespace: default
+
 ---
 # Source: kafka/templates/svc-external-access.yaml
-
 
 ---
 apiVersion: v1
@@ -83,19 +116,16 @@ metadata:
   name: new-kafka-0-external
   labels:
     app.kubernetes.io/name: kafka
-    helm.sh/chart: kafka-7.3.5
+    helm.sh/chart: kafka-9.0.0
     app.kubernetes.io/instance: new
     app.kubernetes.io/managed-by: Tiller
     app.kubernetes.io/component: kafka
     pod: new-kafka-0
-  annotations: 
-    {}
-    
 spec:
   type: NodePort
   ports:
-    - name: kafka
-      port: 30000
+    - name: tcp-kafka
+      port: 19092
       nodePort: 30000
       targetPort: 30000
   selector:
@@ -104,7 +134,6 @@ spec:
     app.kubernetes.io/component: kafka
     statefulset.kubernetes.io/pod-name: new-kafka-0
 ---
-
 ---
 apiVersion: v1
 kind: Service
@@ -112,19 +141,16 @@ metadata:
   name: new-kafka-1-external
   labels:
     app.kubernetes.io/name: kafka
-    helm.sh/chart: kafka-7.3.5
+    helm.sh/chart: kafka-9.0.0
     app.kubernetes.io/instance: new
     app.kubernetes.io/managed-by: Tiller
     app.kubernetes.io/component: kafka
     pod: new-kafka-1
-  annotations: 
-    {}
-    
 spec:
   type: NodePort
   ports:
-    - name: kafka
-      port: 30001
+    - name: tcp-kafka
+      port: 19092
       nodePort: 30001
       targetPort: 30001
   selector:
@@ -133,7 +159,6 @@ spec:
     app.kubernetes.io/component: kafka
     statefulset.kubernetes.io/pod-name: new-kafka-1
 ---
-
 ---
 apiVersion: v1
 kind: Service
@@ -141,19 +166,16 @@ metadata:
   name: new-kafka-2-external
   labels:
     app.kubernetes.io/name: kafka
-    helm.sh/chart: kafka-7.3.5
+    helm.sh/chart: kafka-9.0.0
     app.kubernetes.io/instance: new
     app.kubernetes.io/managed-by: Tiller
     app.kubernetes.io/component: kafka
     pod: new-kafka-2
-  annotations: 
-    {}
-    
 spec:
   type: NodePort
   ports:
-    - name: kafka
-      port: 30002
+    - name: tcp-kafka
+      port: 19092
       nodePort: 30002
       targetPort: 30002
   selector:
@@ -171,7 +193,7 @@ metadata:
   name: new-kafka-headless
   labels:
     app.kubernetes.io/name: kafka
-    helm.sh/chart: kafka-7.3.5
+    helm.sh/chart: kafka-9.0.0
     app.kubernetes.io/instance: new
     app.kubernetes.io/managed-by: Tiller
     app.kubernetes.io/component: kafka
@@ -179,11 +201,13 @@ spec:
   type: ClusterIP
   clusterIP: None
   ports:
-    - name: kafka
+    - name: tcp-kafka
       port: 9092
+      protocol: TCP
       targetPort: kafka
-    - name: kafka-ssl
+    - name: tls-kafka
       port: 9093
+      protocol: TCP
       targetPort: kafka-ssl
   selector:
     app.kubernetes.io/name: kafka
@@ -198,22 +222,23 @@ metadata:
   name: new-kafka
   labels:
     app.kubernetes.io/name: kafka
-    helm.sh/chart: kafka-7.3.5
+    helm.sh/chart: kafka-9.0.0
     app.kubernetes.io/instance: new
     app.kubernetes.io/managed-by: Tiller
     app.kubernetes.io/component: kafka
-  annotations: 
-    {}
-    
 spec:
   type: ClusterIP
   ports:
-    - name: kafka
+    - name: tcp-kafka
       port: 9092
+      protocol: TCP
       targetPort: kafka
-    - name: kafka-ssl
+      nodePort: null
+    - name: tls-kafka
       port: 9093
+      protocol: TCP
       targetPort: kafka-ssl
+      nodePort: null
   selector:
     app.kubernetes.io/name: kafka
     app.kubernetes.io/instance: new
@@ -221,52 +246,47 @@ spec:
 
 ---
 # Source: kafka/templates/statefulset.yaml
+
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: new-kafka
   labels:
     app.kubernetes.io/name: kafka
-    helm.sh/chart: kafka-7.3.5
+    helm.sh/chart: kafka-9.0.0
     app.kubernetes.io/instance: new
     app.kubernetes.io/managed-by: Tiller
     app.kubernetes.io/component: kafka
-    role: kafka
 spec:
+  podManagementPolicy: Parallel
+  replicas: 3
   selector:
     matchLabels:
       app.kubernetes.io/name: kafka
       app.kubernetes.io/instance: new
       app.kubernetes.io/component: kafka
   serviceName: new-kafka-headless
-  podManagementPolicy: "Parallel"
-  replicas: 3
   updateStrategy:
     type: "RollingUpdate"
   template:
     metadata:
       labels:
         app.kubernetes.io/name: kafka
-        helm.sh/chart: kafka-7.3.5
+        helm.sh/chart: kafka-9.0.0
         app.kubernetes.io/instance: new
         app.kubernetes.io/managed-by: Tiller
         app.kubernetes.io/component: kafka
+      annotations:
+        checksum/scripts: 42841942731d604b8b95f20a736744d35589b57ccb35d3ed520e716cf4d1da31
     spec:      
       securityContext:
         fsGroup: 1001
         runAsUser: 1001
-      nodeSelector:
-        {}
         
-      tolerations:
-        []
-        
-      affinity:
-        {}
-        
+      serviceAccountName: kafka-sa
       containers:
         - name: kafka
-          image: docker.io/bitnami/kafka:2.4.0-debian-10-r31
+          image: docker.io/bitnami/kafka:2.4.1-debian-10-r12
           imagePullPolicy: "IfNotPresent"
           command:
             - /scripts/setup.sh
@@ -286,9 +306,13 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: KAFKA_CFG_ZOOKEEPER_CONNECT
-              value: "new-zookeeper"
+              value: "nsxi-zookeeper"
             - name: KAFKA_PORT_NUMBER
               value: "9092"
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: "INTERNAL"
+            - name: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "INTERNAL:SASL_SSL,EXTERNAL:SASL_SSL"
             - name: KAFKA_OPTS
               value: "-Djava.security.auth.login.config=/opt/bitnami/kafka/conf/kafka_jaas.conf"
             - name: KAFKA_BROKER_USER
@@ -296,21 +320,21 @@ spec:
             - name: KAFKA_BROKER_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: new-kafka
+                  name: kafka-secret
                   key: kafka-broker-password
             - name: KAFKA_INTER_BROKER_USER
               value: "admin"
             - name: KAFKA_INTER_BROKER_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: new-kafka
+                  name: kafka-secret
                   key: kafka-inter-broker-password
             - name: KAFKA_ZOOKEEPER_USER
               value: "kafka"
             - name: KAFKA_ZOOKEEPER_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: new-kafka
+                  name: kafka-secret
                   key: kafka-zookeeper-password
             - name: KAFKA_CERTIFICATE_PASSWORD
               value: "Admin!23Admin"
@@ -337,7 +361,7 @@ spec:
             - name: KAFKA_CFG_LOG_SEGMENT_BYTES
               value: "1073741824"
             - name: KAFKA_CFG_LOG_DIRS
-              value: /bitnami/kafka/data
+              value: "/bitnami/kafka/data"
             - name: KAFKA_CFG_DEFAULT_REPLICATION_FACTOR
               value: "3"
             - name: KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR
@@ -364,27 +388,32 @@ spec:
               value: "102400"
             - name: KAFKA_CFG_ZOOKEEPER_CONNECTION_TIMEOUT_MS
               value: "6000"
+            
+            - name: KAFKA_CFG_ZOOKEEPER_SET_ACL
+              value: "true"
+            
           ports:
             - name: kafka
               containerPort: 9092
             - name: kafka-ssl
               containerPort: 9093
           livenessProbe:
-            tcpSocket:
-              port: kafka
             initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 5
-            successThreshold: 1
-            failureThreshold: 2
-          readinessProbe:
             tcpSocket:
               port: kafka
-            initialDelaySeconds: 5
-            periodSeconds: 10
             timeoutSeconds: 5
-            successThreshold: 1
+            
+          readinessProbe:
             failureThreshold: 6
+            initialDelaySeconds: 5
+            tcpSocket:
+              port: kafka
+            timeoutSeconds: 5
+            
+          resources:
+            limits: {}
+            requests: {}
+            
           volumeMounts:
             - name: scripts
               mountPath: /scripts/setup.sh
@@ -394,20 +423,15 @@ spec:
             - name: kafka-certificates
               mountPath: /opt/bitnami/kafka/conf/certs/
               readOnly: true
-        
       volumes:
         - name: scripts
           configMap:
             name: new-kafka-scripts
             defaultMode: 0755
-        
-        
-        
         - name: kafka-certificates
           secret:
-            secretName: kafka-secret
+            secretName: kafka-cert-secret
             defaultMode: 256
-        
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -427,11 +451,11 @@ spec:
 # Source: kafka/templates/jmx-configmap.yaml
 
 ---
-# Source: kafka/templates/kafka-exporter.yaml
+# Source: kafka/templates/jmx-metrics-svc.yaml
 
 
 ---
-# Source: kafka/templates/kafka-jmx-metrics-svc.yaml
+# Source: kafka/templates/kafka-metrics-deployment.yaml
 
 
 ---
@@ -439,7 +463,7 @@ spec:
 
 
 ---
-# Source: kafka/templates/serviceaccount.yaml
+# Source: kafka/templates/secrets.yaml
 
 
 ---

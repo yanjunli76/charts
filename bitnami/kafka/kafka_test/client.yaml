@@ -1,0 +1,54 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: adminclient
+  namespace: default
+data:
+  adminclient.props: |-
+    security.protocol=SASL_SSL
+    ssl.truststore.type=JKS
+    ssl.keystore.location=/opt/bitnami/kafka/conf/certs/kafka.keystore.jks
+    ssl.truststore.password=Admin!23Admin
+    ssl.keystore.type=JKS
+    ssl.truststore.location=/opt/bitnami/kafka/conf/certs/kafka.truststore.jks
+    ssl.keystore.password=Admin!23Admin
+    ssl.key.password=Admin!23Admin
+    ssl.endpoint.identification.algorithm=
+    ssl.enabled.protocols=TLSv1.2
+    sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="user" password="user";
+    sasl.mechanism=PLAIN
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kafka-client
+  namespace: default
+spec:
+  containers:
+  - name: kafka-client
+    # image: gcr.io/google-containers/kubernetes-kafka:1.0-10.2.0
+    image: docker.io/wurstmeister/kafka:latest
+    command:
+      - sleep
+      - "3600"
+    imagePullPolicy: IfNotPresent
+    volumeMounts:
+    - name: kafka-certificates
+      mountPath: /opt/bitnami/kafka/conf/certs/
+      readOnly: true
+    - name: admin-conf
+      mountPath: /root/adminclient.props
+      subPath: adminclient.props
+   
+  volumes:
+    - name: kafka-certificates
+      secret:
+        secretName: kafka-cert-secret
+        defaultMode: 25
+    - name: admin-conf
+      configMap:
+        name: adminclient
+        defaultMode: 064
+  restartPolicy: Always

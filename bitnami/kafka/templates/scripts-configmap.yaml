@@ -72,6 +72,7 @@ data:
     export EXTERNAL_ACCESS_IP={{ .Values.externalAccess.service.domain }}
     {{- else }}
     # export EXTERNAL_ACCESS_IP=$(curl -s https://ipinfo.io/ip)
+    LAN_IP=${NODE_IP:?node ip is missing}
     export EXTERNAL_ACCESS_IP=${LAN_IP}
     {{- end }}
     {{- if .Values.externalAccess.autoDiscovery.enabled }}
