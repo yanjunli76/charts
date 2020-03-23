@@ -1,0 +1,39 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zookeeper-jaas
+  namespace: default
+data:
+  zoo_jaas.conf: |-
+    Client {
+    org.apache.zookeeper.server.auth.DigestLoginModule required
+    username="super"
+    password="9+7ziZuCeqy3vWMfm2U9hQ==";
+    };
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: zookeeper-client
+  namespace: default
+spec:
+  containers:
+  - name: zookeepeer-client
+    image: gcr.io/google-containers/kubernetes-zookeeper:1.0-3.4.10
+    command:
+      - sleep
+      - "3600"
+    imagePullPolicy: IfNotPresent
+    volumeMounts:
+      - name: conf
+        mountPath: /root/zoo_jaas.conf
+        subPath: zoo_jaas.conf
+  volumes:
+  - name: conf
+    configMap:
+      name: zookeeper-jaas
+      defaultMode: 0644
+  restartPolicy: Always
+  
